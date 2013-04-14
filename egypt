@@ -6,8 +6,8 @@ egypt - create call graph from gcc RTL dump
 
 =head1 SYNOPISIS
 
- egypt [--omit function,function,...] [--include-external] <rtl-file>... | dotty -
- egypt [--omit function,function,...] [--include-external] <rtl-file>... | dot <dot-options>
+ egypt [--omit function,function,...] [--only function,function,...] [--include-external] <rtl-file>... | dotty -
+ egypt [--omit function,function,...] [--only function,function,...] [--include-external] <rtl-file>... | dot <dot-options>
 
 =head1 DESCRIPTION
 
@@ -20,6 +20,11 @@ Egypt is a simple tool for creating call graphs of C programs.
 =item omit
 
 Omit the given functions from the call graph.  Multiple function names
+may be given separated by commas.
+
+=item only
+
+Include only the given functions from the call graph.  Multiple function names
 may be given separated by commas.
 
 =item include-external
@@ -194,6 +199,8 @@ my $curfunc;
 
 # Functions to omit
 my @omit = ();
+# Limit to given functions only
+my @only = ();
 my $include_external = 0;
 
 # Mapping from symbol reference types to dot styles
@@ -211,9 +218,11 @@ sub demangle {
 }
 
 GetOptions('omit=s' => \@omit,
+	   'only=s' => \@only,
 	   'include-external' => \$include_external);
 
 @omit = split(/,/, join(',', @omit));
+@only = split(/,/, join(',', @only));
 
 sub enter_func {
     my ($funcname) = @_;
@@ -240,10 +249,14 @@ while (<>) {
     }
 }
 
-delete @$calls{@omit};
-
 my %omit_map;
 @omit_map{@omit} = ();
+
+my %only_map;
+@only_map{@only} = ();
+
+delete @$calls{@omit};
+%$calls = map { exists $only_map{$_} ? ($_ => $calls->{$_}) : () } keys %$calls if @only;
 
 my %unconnected = map { ($_, undef) } keys %{$calls};
 
@@ -259,7 +272,8 @@ foreach my $caller (keys %{$calls}) {
 	# or a direct call to an external function, ignore it.
 	next unless exists($calls->{$callee}) or
 	    $include_external and $reftype eq 'call'
-	        and ! exists $omit_map{$callee};
+	        and ! exists $omit_map{$callee}
+	        and ! (@only and not exists $only_map{$callee});
 	my $style = $styles->{$reftype};
 	my $callee_d = demangle($callee);
 	print "\"$caller_d\" -> \"$callee_d\" [style=$style];\n";

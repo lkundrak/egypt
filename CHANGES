@@ -1,3 +1,5 @@
+Make it possible to limit the graphing to specified functions only.
+
 -- 1.10 released --
 
 Support the RTL function comment syntax of gcc 4.4.0
