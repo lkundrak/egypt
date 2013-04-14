@@ -6,8 +6,8 @@ egypt - create call graph from gcc RTL dump
 
 =head1 SYNOPISIS
 
- egypt [--omit function,function,...] [--only function,function,...] [--include-external] <rtl-file>... | dotty -
- egypt [--omit function,function,...] [--only function,function,...] [--include-external] <rtl-file>... | dot <dot-options>
+ egypt [--omit function,function,...] [--only function,function,...] [--include-external] [--files] <rtl-file>... | dotty -
+ egypt [--omit function,function,...] [--only function,function,...] [--include-external] [--files] <rtl-file>... | dot <dot-options>
 
 =head1 DESCRIPTION
 
@@ -34,6 +34,10 @@ considered external if it is not defined in any of the input files.
 For example, functions in the standard C library are external.  Only
 direct function calls will be displayed; there is no way to display
 the action of taking the address of an external function.
+
+=item files
+
+Create box containers for source files.
 
 =back
 
@@ -190,6 +194,7 @@ $VERSION = "1.10";
 # this will be considered an indirect function call).
 
 my $calls = { };
+my $files;
 
 # A map from mangled C++ names to the corresponding demangled ones
 my $demangle = { };
@@ -219,7 +224,8 @@ sub demangle {
 
 GetOptions('omit=s' => \@omit,
 	   'only=s' => \@only,
-	   'include-external' => \$include_external);
+	   'include-external' => \$include_external,
+	   'files' => sub { $files = {} });
 
 @omit = split(/,/, join(',', @omit));
 @only = split(/,/, join(',', @only));
@@ -231,6 +237,8 @@ sub enter_func {
 }
 
 while (<>) {
+    $ARGV =~ /([^\/]+\.[^\d]+)\.[^\.]+$/ or $ARGV =~ /([^\/]+)\.\d+r?\.[^\.]+$/;
+    my $file = $1 || '(unknown)';
     chomp;
     if (/^;; Function (\S+)\s*$/) {
 	# pre-gcc4 style
@@ -247,6 +255,10 @@ while (<>) {
     } elsif (/^.*\(symbol_ref.*"(.*)".*$/) {
 	$calls->{$curfunc}->{$1} = 'ref';
     }
+    if ($files and $curfunc) {
+        $files->{$file} ||= {};
+        $files->{$file}{$curfunc} = $calls->{$curfunc};
+    }
 }
 
 my %omit_map;
@@ -261,6 +273,18 @@ delete @$calls{@omit};
 my %unconnected = map { ($_, undef) } keys %{$calls};
 
 print "digraph callgraph {\n";
+
+my $sc = 0;
+foreach my $file (keys %$files) {
+	print "subgraph cluster_$sc {\n";
+	print "label = \"$file\";\n";
+	foreach my $func (keys %{$files->{$file}}) {
+		my $func_d = demangle($func);
+		print "\"$func_d\";\n";
+	}
+	print "}\n";
+	$sc++;
+}
 
 foreach my $caller (keys %{$calls}) {
     my $caller_d = demangle($caller);
